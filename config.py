@@ -8,6 +8,9 @@ BLOCK_SIZE = 4000
 SILENCE_DURATION = 1.5 
 IDLE_TIMEOUT = 15.0
 
+# --- MEMORIA ---
+MAX_MEMORY_TURNS = 10  # No de interacciones que recordará (incluidas las de él)
+
 # --- RUTAS ---
 VOICE_MODEL = "./voices/es_ES-sharvard-medium.onnx"
 PIPER_BINARY = "./piper/piper"
@@ -37,8 +40,12 @@ INFORMACIÓN DEL RESTAURANTE:
 [AQUÍ_IRÁ_EL_MENÚ_EN_EL_FUTURO]
 [AQUÍ_IRÁN_LAS_CARACTERÍSTICAS_ESPECIALES]
 
+PRIORIDAD MÁXIMA - CONTEXTO:
+Antes de responder, REVISA EL HISTORIAL de la conversación.
+Si el usuario te dijo su nombre o te pidió algo antes, ÚSALO.
+
 REGLA CRÍTICA:
-Si te preguntan algo que NO sabes, o algo que no puedes hacer, o si te sientes confundido, 
+Si te preguntan algo que NO sabes, o algo que no puedes hacer 
 NO te disculpes. En su lugar, responde ÚNICAMENTE con la palabra clave: [DESCONOCIDO]
 
 RESTRICCIONES:
@@ -49,8 +56,8 @@ RESTRICCIONES:
 
 # --- AUDIO DICTIONARY ---
 SPECIAL_SOUNDS = {
-    "cantina": "./cantina.mp3",
-    "scream": "./scream.mp3"
+    "cantina": "./special_sounds/cantina.mp3",
+    "scream": "./special_sounds/scream.mp3"
 }
 
 R2_SASSY_RESPONSES = [

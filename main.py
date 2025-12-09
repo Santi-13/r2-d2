@@ -17,13 +17,14 @@ audio_buffer = np.zeros((0, 1), dtype=np.float32)
 is_recording = False
 silence_start = None
 last_interaction = time.time()
+conversation_history = []
 
 def callback(indata, frames, time, status):
     if status: print(status, file=sys.stderr)
     q.put(indata.copy())
 
 def main():
-    global is_recording, silence_start, audio_buffer, last_interaction
+    global is_recording, silence_start, audio_buffer, last_interaction, conversation_history    
     
     print("-----------------------------------")
     print("   R2-D2 HYBRID SYSTEM ONLINE")
@@ -74,23 +75,42 @@ def main():
 
                         if len(user_msg) > 2:
                             print(f"\n🗣️  USER: {user_msg}")
-                            
+
                             # B. Pensar (Híbrido: Nube -> Local)
-                            ai_reply = brain.query_hybrid(user_msg)
+                            # --- PASO 1: AGREGAR USUARIO A MEMORIA ---
+                            conversation_history.append({"role": "user", "content": user_msg})
+                            
+                            # --- PASO 2: RECORTAR MEMORIA (Ventana Deslizante) ---
+                            # Si superamos el límite, borramos el más antiguo (índice 0)
+                            if len(conversation_history) > config.MAX_MEMORY_TURNS:
+                                conversation_history.pop(0)
+
+                            # --- PASO 3: CONSULTAR CEREBRO (Pasamos la lista, no el string) ---
+                            ai_reply = brain.query_hybrid(conversation_history)
                             
                             # C. Actuar
                             if "[DESCONOCIDO]" in ai_reply:
                                 mouth.handle_confusion()
+                                conversation_history.append({"role": "assistant", "content": "No entendí eso."})
                             else:
                                 print(f"🤖 AI: {ai_reply}")
                                 mouth.speak(ai_reply)
+                                conversation_history.append({"role": "assistant", "content": ai_reply})
+
+                        if len(conversation_history) > config.MAX_MEMORY_TURNS:
+                            conversation_history.pop(0)
+
+                        print("   (Limpiando buffer de audio...)")
+                        with q.mutex:
+                            q.queue.clear()  # <--- Borra todo lo que escuchó mientras hablaba
+                        audio_buffer = np.zeros((0, 1), dtype=np.float32) # Reinicia el buffer de Whisper
                         
-                        # Reset
+                        # Reset final
                         is_recording = False
                         silence_start = None
-                        audio_buffer = np.zeros((0, 1), dtype=np.float32)
                         last_interaction = time.time()
                         print("\n🎤 Escuchando...")
+
             
             time.sleep(0.01)
 

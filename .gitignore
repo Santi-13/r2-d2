@@ -3,7 +3,8 @@
 
 # 2. Un-ignore the specific folder allowed
 # This tells git to look inside this directory
-!Funny_sounds/
+!funny_sounds/
+!special_sounds/
 
 # 3. Un-ignore the specific file types allowed
 !*.py
