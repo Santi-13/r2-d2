@@ -1,0 +1,13 @@
+# 1. Ignore everything (all files and all folders) by default
+*
+
+# 2. Un-ignore the specific folder allowed
+# This tells git to look inside this directory
+!Funny_sounds/
+
+# 3. Un-ignore the specific file types allowed
+!*.py
+!*.mp3
+
+# 4. Un-ignore the .gitignore file itself (so it is tracked)
+!.gitignore
