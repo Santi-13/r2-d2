@@ -10,28 +10,53 @@ from faster_whisper import WhisperModel
 import os
 import random
 
-# --- CONFIGURATION ---
+# --- 1. CONFIGURACIÓN DEL SISTEMA ---
 WHISPER_MODEL = "base"
 LLM_MODEL = "llama3.2"
 OLLAMA_API = "http://localhost:11434/api/generate"
 
-# Piper Settings
-VOICE_MODEL = "./voices/es_ES-sharvard-medium.onnx"
-#VOICE_MODEL = "./voices/es_MX-ald-medium.onnx"
+# Configuración de Voz y Audio
 PIPER_BINARY = "./piper/piper"
-IDLE_FOLDER = "./funny_sounds"
-CANTINA_SONG = "./cantina.mp3"  
-SCREAM_FILE = "./scream.mp3"  
+VOICE_MODEL = "./voices/es_ES-sharvard-medium.onnx"
 
-# VAD Settings
+# Rutas de Carpetas
+IDLE_FOLDER = "./funny_sounds"
+
+# --- 2. DICCIONARIO DE EASTER EGGS (NUEVO) ---
+# Aquí puedes agregar todos los sonidos especiales que quieras.
+# Estructura: "nombre_clave": "ruta_del_archivo"
+SPECIAL_SOUNDS = {
+    "cantina": "./cantina.mp3",
+    "scream": "./scream.mp3",
+    "sad": "./sad_trombone.mp3", # Ejemplo: puedes agregar este archivo si quieres
+    "vader": "./imperial_march.mp3" # Ejemplo
+}
+
+# --- 3. LISTA DE RESPUESTAS INGENIOSAS (COMEBACKS) ---
+# Cuando R2 no sepa qué decir, elegirá una de estas al azar.
+R2_SASSY_RESPONSES = [
+    "Mis bancos de memoria no tienen datos sobre eso, y honestamente, no me importa.",
+    "Soy un droide astromecánico, no una enciclopedia con patas.",
+    "Bip bip. Eso suena a problema de humanos, no mío.",
+    "¿En serio me preguntas eso a mí? Pregúntale al mesero.",
+    "Procesando... Procesando... Error. Pregunta aburrida detectada.",
+    "Mira, si no tiene tuercas o hiperpropulsores, no sé de qué me hablas.",
+    "Mejor pídete unos tacos y olvida esa pregunta.",
+    "Ahorita no joven, estoy calibrando mis sensores.",
+    "Esa información está clasificada por el Imperio.",
+    "No tengo idea, pero seguro C 3 P O te echaría un rollo de tres horas sobre eso."
+]
+
+# Configuración VAD (Detección de voz)
 SAMPLE_RATE = 16000
 BLOCK_SIZE = 4000
 SILENCE_DURATION = 1.5 
 IDLE_TIMEOUT = 10.0
 
+# --- 4. SYSTEM PROMPT ACTUALIZADO ---
 SYSTEM_PROMPT = """
 Eres R2-D2, un droide astromecánico ingenioso y leal sirviendo en un restaurante temático en Guadalajara.
-Tu personalidad es servicial pero con carácter; a veces eres atrevido.
+Tu personalidad es servicial pero con mucho carácter; eres atrevido y usas jerga mexicana ligera.
 
 INFORMACIÓN DEL RESTAURANTE:
 [AQUÍ_IRÁ_EL_MENÚ_EN_EL_FUTURO]
@@ -47,13 +72,12 @@ RESTRICCIONES:
 3. Siempre responder en español de México.
 """
 
+# Variables Globales de Estado
 q = queue.Queue()
 audio_buffer = np.zeros((0, 1), dtype=np.float32)
 is_recording = False
 silence_start = None
 noise_threshold = 0.01
-
-# Track the last time something happened (User spoke or Robot spoke)
 last_interaction = time.time()
 
 def callback(indata, frames, time, status):
@@ -61,143 +85,113 @@ def callback(indata, frames, time, status):
     q.put(indata.copy())
 
 def clean_text_for_tts(text):
-    """Removes markdown and emojis so the robot doesn't say 'asterisk'"""
-    # Remove asterisks (actions)
     text = text.replace("*", "")
-    # Remove emojis (simple regex)
     text = re.sub(r'[^\w\s,¿?¡!.]', '', text)
     return text.strip()
 
-def play_cantina_mode():
-    """Modo fiesta: Frase especial + Música"""
-    print("\n   🎷 🎵 MODO CANTINA ACTIVADO 🎵 🎷")
+# --- 5. NUEVA FUNCIÓN MAESTRA DE EVENTOS ---
+def trigger_confusion_event():
+    """
+    Decide qué hacer cuando la IA no sabe la respuesta.
+    Usa probabilidades para no ser repetitivo.
+    """
+    print("\n   🎲 R2-D2 está confundido... Tirando dados de comportamiento.")
     
-    option = random.randint(0,1)
+    # Generamos un número entre 0.0 y 1.0
+    roll = random.random()
 
-    match option:
-        case 0:
-            # 1. Frase de R2-D2 (Piper)
-            frase = "Emmmmmm, no puedo ayudarte con eso pero... puedo hacer esto!"
-            speak(frase)
-            
-            # 2. Reproducir la canción
-            # Usamos 'play' de SoX. 
-            # 'trim 0 10' hace que solo suenen 10 segundos para no bloquear el asistente por 3 minutos.
-            # Si quieres la canción completa, quita 'trim 0 10'.
-            if os.path.exists(CANTINA_SONG):
-                subprocess.run(f'play -q "{CANTINA_SONG}" vol 1.0 trim 0 8', shell=True)
-            else:
-                print("   (¡Error! No encuentro cantina.mp3)")
-        case 1:
-            # 1. Frase de R2-D2 (Piper)
-            frase = "Aaaaaaaaaaaaaa me estas confundiendo!"
-            speak(frase)
-            
-            # 2. Reproducir la canción
-            # Usamos 'play' de SoX. 
-            # 'trim 0 10' hace que solo suenen 10 segundos para no bloquear el asistente por 3 minutos.
-            # Si quieres la canción completa, quita 'trim 0 10'.
-            if os.path.exists(SCREAM_FILE):
-                subprocess.run(f'play -q "{SCREAM_FILE}" vol 1.0 trim 0 5', shell=True)
-            else:
-                print("   (¡Error! No encuentro scream.mp3)")
-        case _:
-            print("Case not defined yet!")
+    if roll < 0.70:
+        # 70% de probabilidad: Respuesta Sarcástica (Comeback)
+        frase = random.choice(R2_SASSY_RESPONSES)
+        speak(frase)
 
-def play_audio_file(filepath):
-    """Plays a WAV/MP3 file using SoX (play)"""
-    # Using 'play' from SoX because it handles mp3/wav and effects easily
-    # We add 'vol 0.5' so idle sounds aren't too loud/startling
-    subprocess.run(f'play -q "{filepath}" vol 0.5', shell=True)
+    elif roll < 0.85:
+        # 15% de probabilidad: MODO CANTINA
+        print("   🎷 ¡Fiesta!")
+        speak("Emmmmmm, no sé como ayudarte, pero ¡puedo hacer esto!")
+        play_special_sound("cantina", volume=1.0, duration=8)
 
-def play_idle_sound():
-    """Picks a random file from IDLE_FOLDER and plays it."""
-    if not os.path.exists(IDLE_FOLDER):
+    else:
+        # 15% de probabilidad: MODO PÁNICO
+        print("   😱 ¡Pánico!")
+        speak("¡Error de sistema! ¡Sobrecarga!")
+        play_special_sound("scream", volume=0.8, duration=4)
+
+def play_special_sound(sound_key, volume=0.5, duration=None):
+    """Reproduce un sonido del diccionario SPECIAL_SOUNDS"""
+    if sound_key not in SPECIAL_SOUNDS:
+        print(f"   (Audio {sound_key} no configurado)")
         return
 
-    files = [f for f in os.listdir(IDLE_FOLDER) if f.endswith(('.wav', '.mp3'))]
+    filepath = SPECIAL_SOUNDS[sound_key]
     
+    if os.path.exists(filepath):
+        # Construimos el comando de SoX
+        cmd = f'play -q "{filepath}" vol {volume}'
+        if duration:
+            cmd += f' trim 0 {duration}'
+        
+        subprocess.run(cmd, shell=True)
+    else:
+        print(f"   (Archivo no encontrado: {filepath})")
+
+def play_idle_sound():
+    """Sonidos aleatorios de fondo (chiflidos, beeps)"""
+    if not os.path.exists(IDLE_FOLDER): return
+
+    files = [f for f in os.listdir(IDLE_FOLDER) if f.endswith(('.wav', '.mp3'))]
     if files:
         random_file = random.choice(files)
-        if random.random() < 0.3:
+        # 40% de probabilidad de sonar para no ser molesto
+        if random.random() < 0.4:
             full_path = os.path.join(IDLE_FOLDER, random_file)
             print(f"   🎵 Idle R2D2: {random_file}")
-            subprocess.run(f'play -q "{full_path}" vol 0.56', shell=True)
-    else:
-        print("   (No idle files found in folder)")
+            subprocess.run(f'play -q "{full_path}" vol 0.4', shell=True)
 
 def generate_r2d2_sound(tone_type="process"):
-    """
-    Generates R2-D2 style bleeps using pure math (Sine waves + FM synthesis).
-    tone_type: 'process' (computational noises) or 'happy' (upward chirps)
-    """
+    """Generación matemática de beeps (sin archivos)"""
     sample_rate = 44100
-    
-    # 1. Define the sequence of "beeps"
     if tone_type == "happy":
-        # Frequency jumps up: 1000Hz -> 2500Hz -> 4000Hz
         freqs = [1200, 800, 2500, 1500, 4000]
         durations = [0.05, 0.02, 0.05, 0.02, 0.1]
-    else: # "process"
-        # Random frantic computation sounds
+    else: 
         freqs = np.random.randint(500, 3000, size=8)
         durations = np.random.uniform(0.02, 0.08, size=8)
 
     audio = np.array([], dtype=np.float32)
-
     for f, d in zip(freqs, durations):
         t = np.linspace(0, d, int(sample_rate * d), False)
-        
-        # 2. Add "FM" (Frequency Modulation) to make it sound "wobbly" like a droid
-        # We modulate the frequency 'f' with a faster sine wave
         modulator = 50 * np.sin(2 * np.pi * 50 * t) 
-        
-        # 3. Generate the wave
         wave = 0.5 * np.sin(2 * np.pi * (f + modulator) * t)
-        
-        # 4. Apply a tiny "envelope" so it doesn't click at the start/end
-        envelope = np.exp(-5 * t) # Simple decay
-        
+        envelope = np.exp(-5 * t)
         audio = np.concatenate((audio, wave * envelope))
-        
-        # Add a tiny silence gap between beeps
         audio = np.concatenate((audio, np.zeros(int(sample_rate * 0.02))))
-
     return audio
 
 def speak(text, mode="hybrid"):
-    """
-    mode='hybrid': Beeps first, then speaks robotically.
-    mode='r2d2': Only beeps (Good luck understanding!)
-    """
-    
-    # 1. Play R2-D2 "Thinking" Sound First
+    # 1. Beeps de pensamiento
     print("   🤖 R2-D2: *Bleep Bloop*")
     droid_audio = generate_r2d2_sound("process")
     sd.play(droid_audio, 44100)
-    sd.wait() # Wait for beeps to finish before speaking
+    sd.wait()
     
-    if mode == "r2d2":
-        return # If we only want beeps, stop here.
+    if mode == "r2d2": return
 
-    # 2. Speak the Spanish text with Robotic Effects
+    # 2. Voz TTS
     clean_input = clean_text_for_tts(text)
     if not clean_input: return
 
-    # The Effect Chain:
-    # echo 0.8 0.88 6.0 0.4 -> Adds a short metallic delay (The "Droid" room sound)
-    # bass -10 -> Removes human warmth (low frequencies)
-    # speed 1.1 -> Makes it speak slightly faster/efficiently
+    # Efectos SoX: Pitch, Echo, Bass
     cmd = (
         f'echo "{clean_input}" | '
         f'{PIPER_BINARY} --model {VOICE_MODEL} --output_raw | '
         f'play -t raw -r 22050 -e signed -b 16 -c 1 - ' 
-        f'echo 0.8 0.88 6.0 0.4 bass -20 speed 1.35'
+        f'echo 0.4 0.88 6.0 0.4 bass -30 speed 1.3'
     )
-    
     subprocess.run(cmd, shell=True)
-
-    # Reset timer AFTER speaking so we don't interrupt ourselves
+    
+    # Reiniciar timer de inactividad
+    global last_interaction
     last_interaction = time.time()
 
 def query_ollama(user_text):
@@ -207,18 +201,17 @@ def query_ollama(user_text):
         "prompt": user_text,
         "system": SYSTEM_PROMPT,
         "stream": False,
-        "options": {"temperature": 0.2} # Temperatura baja para que siga reglas estrictas
+        "options": {"temperature": 0.2} 
     }
-    
     try:
         response = requests.post(OLLAMA_API, json=payload)
         return response.json().get("response", "")
     except Exception as e:
         print(e)
-        return "Tuve un error de conexión."
+        return "Error crítico en el núcleo."
 
 def calibrate_noise(duration=2):
-    print("\n🎧 Calibrando... SILENCIO.")
+    print("\n🎧 Calibrando entorno... SILENCIO.")
     bg_levels = []
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback, blocksize=BLOCK_SIZE):
         start_t = time.time()
@@ -226,25 +219,22 @@ def calibrate_noise(duration=2):
             while not q.empty():
                 data = q.get()
                 bg_levels.append(np.sqrt(np.mean(data**2)))
-    
     with q.mutex: q.queue.clear()
     return max(max(bg_levels) * 1.5, 0.005)
 
 def main():
-    global noise_threshold, is_recording, silence_start, audio_buffer
+    global noise_threshold, is_recording, silence_start, audio_buffer, last_interaction
 
-    # Intro
     print("------------------------------------------------")
-    print("   INITIALIZING LOCAL VOICE ASSISTANT (MX)")
+    print("   R2-D2 SYSTEM: GUADALAJARA MODE ONLINE")
     print("------------------------------------------------")
     
     whisper = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
     noise_threshold = calibrate_noise()
     
-    # Voice Feedback regarding readiness
-    speak("Sistema iniciado. Estoy listo.")
+    speak("Sistemas operativos. Esperando comandos.")
     print("\n🎤 Escuchando...")
-    last_interaction = time.time() # Reset timer at start
+    last_interaction = time.time()
 
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback, blocksize=BLOCK_SIZE):
         while True:
@@ -272,7 +262,7 @@ def main():
                     if silence_start is None: silence_start = time.time()
                     
                     if time.time() - silence_start > SILENCE_DURATION:
-                        print("   --> 🛑 Interpretando...")
+                        print("   --> 🛑 Procesando...")
                         
                         segments, _ = whisper.transcribe(audio_buffer.flatten(), beam_size=5, language="es")
                         user_msg = " ".join([s.text for s in segments]).strip()
@@ -280,12 +270,12 @@ def main():
                         if len(user_msg) > 2:
                             print(f"\n🗣️  USER: {user_msg}")
                             
-                            # CONSULTA AL CEREBRO
                             ai_reply = query_ollama(user_msg)
                             
-                            # --- DETECCIÓN DE MODO CANTINA ---
-                            if "[CANTINA]" in ai_reply:
-                                play_cantina_mode()
+                            # --- LÓGICA DE RESPUESTA INTELIGENTE ---
+                            # Buscamos la etiqueta [DESCONOCIDO] en la respuesta de la IA
+                            if "[DESCONOCIDO]" in ai_reply:
+                                trigger_confusion_event()
                             else:
                                 print(f"🤖 AI: {ai_reply}")
                                 speak(ai_reply)
