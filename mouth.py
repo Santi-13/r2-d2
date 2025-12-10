@@ -6,6 +6,7 @@ import numpy as np
 import sounddevice as sd
 import re
 import config
+import limbs
 
 def clean_text(text):
     text = text.replace("*", "")
@@ -48,13 +49,23 @@ def speak(text):
     if not clean: return
     
     print(f"   🔊 R2: {clean}")
+
+    # --- INICIO DE HABLA: Ojo parpadea ---
+    limbs.controller.send_command("eye", "talk")
+    
+    # Generar comando de audio
     cmd = (
         f'echo "{clean}" | '
         f'{config.PIPER_BINARY} --model {config.VOICE_MODEL} --output_raw | '
         f'play -t raw -r 22050 -e signed -b 16 -c 1 - ' 
         f'echo 0.8 0.88 6.0 0.4 bass -20 speed 1.2'
     )
+    
+    # Reproducir (esto bloquea el hilo hasta que termine el audio)
     subprocess.run(cmd, shell=True)
+
+    # --- FIN DE HABLA: Ojo rojo estático ---
+    limbs.controller.send_command("eye", "silent")
 
 def handle_confusion():
     """ 
