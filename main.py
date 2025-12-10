@@ -5,11 +5,12 @@ import sys
 import numpy as np
 import sounddevice as sd
 
-# Importamos nuestros módulos
+# Modulos de funcionamiento
 import config
 import brain
 import mouth
 import ears
+import limbs
 
 # Estado Global
 q = queue.Queue()
@@ -91,8 +92,26 @@ def main():
                             # C. Actuar
                             if "[DESCONOCIDO]" in ai_reply:
                                 mouth.handle_confusion()
+                                limbs.controller.send_command("lights", "blink")
                                 conversation_history.append({"role": "assistant", "content": "No entendí eso."})
                             else:
+                                # 1. Ejecutar Comandos de Hardware (Parsing)
+                                if "[CMD:LIGHTS_ON]" in ai_reply:
+                                    limbs.controller.send_command("lights", "on")
+                                    ai_reply = ai_reply.replace("[CMD:LIGHTS_ON]", "") # Limpiar texto
+                                
+                                if "[CMD:LIGHTS_OFF]" in ai_reply:
+                                    limbs.controller.send_command("lights", "off")
+                                    ai_reply = ai_reply.replace("[CMD:LIGHTS_OFF]", "")
+
+                                if "[CMD:DOOR_OPEN]" in ai_reply:
+                                    limbs.controller.send_command("door", "open")
+                                    ai_reply = ai_reply.replace("[CMD:DOOR_OPEN]", "")
+
+                                if "[CMD:DOOR_CLOSE]" in ai_reply:
+                                    limbs.controller.send_command("door", "close")
+                                    ai_reply = ai_reply.replace("[CMD:DOOR_CLOSE]", "")
+                                    
                                 print(f"🤖 AI: {ai_reply}")
                                 mouth.speak(ai_reply)
                                 conversation_history.append({"role": "assistant", "content": ai_reply})
@@ -103,12 +122,14 @@ def main():
                         print("   (Limpiando buffer de audio...)")
                         with q.mutex:
                             q.queue.clear()  # <--- Borra todo lo que escuchó mientras hablaba
+
                         audio_buffer = np.zeros((0, 1), dtype=np.float32) # Reinicia el buffer de Whisper
                         
                         # Reset final
                         is_recording = False
                         silence_start = None
                         last_interaction = time.time()
+                        time.sleep(0.5)
                         print("\n🎤 Escuchando...")
 
             
