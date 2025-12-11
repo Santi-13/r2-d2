@@ -1,58 +1,43 @@
 import serial
-import time
 import json
-import threading
+import time
 
-# Configuración Serial
-SERIAL_PORT = '/dev/ttyUSB0' # O '/dev/ttyACM0', verifica con 'ls /dev/tty*'
+# En Linux, el Bluetooth serial suele montarse aquí tras el 'rfcomm bind'
+BT_PORT = '/dev/rfcomm0'
 BAUD_RATE = 115200
 
 class BodyController:
     def __init__(self):
         self.ser = None
-        self.is_connected = False
         self.connect()
 
     def connect(self):
         try:
-            print(f"🔌 Conectando con ESP32 en {SERIAL_PORT}...")
-            self.ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-            time.sleep(2) # Esperar a que el ESP32 se reinicie tras conectar
-            self.is_connected = True
-            print("✅ ESP32 Conectado.")
-            # Handshake inicial (opcional)
-            self.send_command("status", "init")
+            print(f"🔌 Conectando Bluetooth en {BT_PORT}...")
+            self.ser = serial.Serial(BT_PORT, BAUD_RATE, timeout=1)
+            time.sleep(2) # Espera técnica para estabilizar conexión
+            print("✅ R2-D2 Bluetooth Conectado.")
         except Exception as e:
-            print(f"⚠️ Error conectando ESP32: {e}")
-            self.is_connected = False
+            print(f"⚠️ Error Bluetooth: {e}")
+            print("   (TIP: ¿Ejecutaste 'sudo rfcomm bind 0 <MAC>'?)")
 
-    def send_command(self, device, action, value=0):
-        """
-        Envía un JSON: {"device": "lights", "action": "blink", "value": 5}
-        """
-        if not self.is_connected:
-            # Intento de reconexión al vuelo
+    def send_command(self, device, action):
+        if not self.ser or not self.ser.is_open:
+            print("   ⚠️ Intentando reconectar Bluetooth...")
             self.connect()
-            if not self.is_connected: return
+            if not self.ser: return
 
-        command = {
-            "device": device,  # 'lights', 'door_front', 'dome'
-            "action": action,  # 'on', 'off', 'open', 'close', 'blink'
-            "value": value     # Brillo, ángulo, velocidad, etc.
-        }
+        command = {"device": device, "action": action}
         
         try:
-            # Serializamos a JSON y agregamos salto de línea (delimitador)
             payload = json.dumps(command) + "\n"
             self.ser.write(payload.encode('utf-8'))
-            # print(f"   >>> TX: {payload.strip()}") # Debug
         except Exception as e:
-            print(f"⚠️ Error enviando comando: {e}")
-            self.is_connected = False
+            print(f"⚠️ Error enviando datos: {e}")
+            # Forzar reconexión en el siguiente intento
+            try: self.ser.close()
+            except: pass
+            self.ser = None
 
-    def close(self):
-        if self.ser and self.ser.is_open:
-            self.ser.close()
-
-# Instancia global para usar en main.py
+# Instancia Global
 controller = BodyController()

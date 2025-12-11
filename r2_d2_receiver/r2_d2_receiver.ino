@@ -2,19 +2,23 @@
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoJson.h>
 #include <AccelStepper.h>
+#include "BluetoothSerial.h" // <--- LIBRERÍA NATIVA
 
-// --- CONFIGURACIÓN DE PINES ---
+// --- CONFIGURACIÓN BLUETOOTH ---
+BluetoothSerial SerialBT;
+const char* deviceName = "R2D2_CONTROL_BT"; // Nombre que verás en la PC
+
+// --- CONFIGURACIÓN DE PINES (Tus pines originales) ---
 #define PIN_STEP_1 14
 #define PIN_DIR_1 12
 #define PIN_STEP_2 26
 #define PIN_DIR_2 27
 
-#define PIN_CUELLO_LARGA 0
 #define PIN_CUERPO 2
 #define PIN_OJOS  4
 #define PIN_TORRETA 16
+#define PIN_CUELLO_LARGA 17
 
-// Cantidad de Leds
 #define NUM_LEDS_CUERPO 7
 #define NUM_LEDS_OJO    8  
 #define NUM_LEDS_TORRETA 8 
@@ -26,12 +30,10 @@ Adafruit_NeoPixel tiraOjos(NUM_LEDS_OJO, PIN_OJOS, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel tiraTorreta(NUM_LEDS_TORRETA, PIN_TORRETA, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel tiraCuello(NUM_LEDS_CUELLO, PIN_CUELLO_LARGA, NEO_GRB + NEO_KHZ800);
 
-// Motores
 AccelStepper motor1(AccelStepper::DRIVER, PIN_STEP_1, PIN_DIR_1);
 AccelStepper motor2(AccelStepper::DRIVER, PIN_STEP_2, PIN_DIR_2);
 
 const int PASOS_PARA_90_GRADOS = 200; 
-
 StaticJsonDocument<200> doc;
 
 // --- VARIABLES DE ESTADO ---
@@ -58,35 +60,54 @@ unsigned long lastNeckFade = 0;
 int neckGreenVal = 100; 
 int neckDir = 2;
 
-void setup() {
-  Serial.begin(115200);
-  randomSeed(analogRead(0)); 
+// --- COMANDOS JSON ---
+void processCommand() {
+  const char* device = doc["device"];
+  const char* action = doc["action"];
 
-  // Inicializar Tiras
-  tiraCuerpo.begin(); 
-  tiraOjos.begin();   
-  tiraTorreta.begin(); 
-  tiraCuello.begin();  
-
-  // Inicialización Cuerpo
-  for (int i = 0; i < NUM_LEDS_CUERPO; i++) {
-    if (random(2) == 0) {
-      bodyLeds[i] = {0, 255, 0, 1}; 
-    } else {
-      bodyLeds[i] = {0, 0, 255, 0}; 
+  // (Tu lógica de comandos idéntica)
+  if (strcmp(device, "eye") == 0) {
+    if (strcmp(action, "talk") == 0) isTalking = true;
+    else if (strcmp(action, "silent") == 0) {
+      isTalking = false;
+      for(int i=0; i<NUM_LEDS_TORRETA; i++) tiraTorreta.setPixelColor(i, 0);
+      tiraTorreta.show();
     }
+  }
+  else if (strcmp(device, "motor") == 0) {
+    if (strcmp(action, "left") == 0) motor1.move(PASOS_PARA_90_GRADOS); 
+    else if (strcmp(action, "right") == 0) motor1.move(-PASOS_PARA_90_GRADOS);
+    else if (strcmp(action, "spin") == 0) {
+       motor1.move(PASOS_PARA_90_GRADOS);
+       motor2.move(-PASOS_PARA_90_GRADOS);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200); // Para debug USB
+  
+  // --- INICIO BLUETOOTH ---
+  SerialBT.begin(deviceName); 
+  Serial.println("Bluetooth Iniciado! Busca 'R2D2_CONTROL_BT' en tu PC.");
+
+  // --- INICIO HARDWARE (Copia tu setup de hardware aquí) ---
+  randomSeed(analogRead(0)); 
+  tiraCuerpo.begin(); tiraCuerpo.show();
+  tiraOjos.begin();   tiraOjos.show();
+  tiraTorreta.begin(); tiraTorreta.show();
+  tiraCuello.begin();  tiraCuello.show();
+  
+  // Inicializar cuerpo random...
+  for (int i = 0; i < NUM_LEDS_CUERPO; i++) {
+    if (random(2) == 0) bodyLeds[i] = {0, 255, 0, 1}; 
+    else bodyLeds[i] = {0, 0, 255, 0}; 
     tiraCuerpo.setPixelColor(i, tiraCuerpo.Color(bodyLeds[i].r, bodyLeds[i].g, bodyLeds[i].b));
   }
   tiraCuerpo.show();
-  tiraOjos.show();
-  tiraTorreta.show();
-  tiraCuello.show();
 
-  // Inicializar Motores
-  motor1.setMaxSpeed(1000);
-  motor1.setAcceleration(500);
-  motor2.setMaxSpeed(1000);
-  motor2.setAcceleration(500);
+  motor1.setMaxSpeed(1000); motor1.setAcceleration(500);
+  motor2.setMaxSpeed(1000); motor2.setAcceleration(500);
 }
 
 // --- LOGICA LEDS ---
@@ -177,32 +198,17 @@ void updateNeck() {
   }
 }
 
-// --- COMANDOS JSON ---
-void processCommand() {
-  const char* device = doc["device"];
-  const char* action = doc["action"];
-
-  if (strcmp(device, "eye") == 0) {
-    if (strcmp(action, "talk") == 0) isTalking = true;
-    else if (strcmp(action, "silent") == 0) isTalking = false;
-  }
-  else if (strcmp(device, "motor") == 0) {
-    if (strcmp(action, "left") == 0) motor1.move(PASOS_PARA_90_GRADOS); 
-    else if (strcmp(action, "right") == 0) motor1.move(-PASOS_PARA_90_GRADOS);
-    else if (strcmp(action, "spin") == 0) {
-       motor1.move(PASOS_PARA_90_GRADOS);
-       motor2.move(-PASOS_PARA_90_GRADOS);
-    }
-  }
-}
 
 void loop() {
-  if (Serial.available() > 0) {
-    String input = Serial.readStringUntil('\n');
+  // 1. LEER COMANDOS DESDE BLUETOOTH
+  if (SerialBT.available()) {
+    String input = SerialBT.readStringUntil('\n');
+    // Serial.println(input); // Debug opcional en USB
     DeserializationError error = deserializeJson(doc, input);
     if (!error) processCommand();
   }
 
+  // 2. Tareas en segundo plano
   motor1.run();
   motor2.run();
 
