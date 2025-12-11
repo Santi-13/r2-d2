@@ -5,6 +5,7 @@
 # This tells git to look inside this directory
 !funny_sounds/
 !special_sounds/
+!r2_d2_receiver/
 
 # 3. Un-ignore the specific file types allowed
 !*.py
