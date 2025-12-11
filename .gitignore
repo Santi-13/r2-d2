@@ -10,6 +10,7 @@
 # 3. Un-ignore the specific file types allowed
 !*.py
 !*.mp3
+!*.ino
 
 # 4. Un-ignore the .gitignore file itself (so it is tracked)
 !.gitignore
